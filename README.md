@@ -35,3 +35,14 @@ The compressed LAZ format is supported by LasIO itself, but requires the user to
 using FileIO, LasIO
 header, points = load("test.laz")
 ```
+
+## Handling of Non-Standard Data
+
+The internal data structures aim to represent any data that follows the standard.
+They aim to hold all the bytes of a LAS file except for reserved data.
+
+The reader tries to read all data even if it does not strictly adhere to the standard.
+If unexpected values are encountered, the reader emits a warning but continues unless it would have to jump backwards in the file (e.g. if the header is larger than the offset to the point data).
+Reserved fields are discarded but generate a warning if they contain unexpected data.
+
+The writer should always write files that adhere to the standard.

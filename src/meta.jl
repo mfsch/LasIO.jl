@@ -86,3 +86,45 @@ macro gen_io(typ::Expr)
     push!(ret.args, :(generate_io($T)))
     return esc(ret)
 end
+
+macro gen_io_n(typ::Expr)
+    T = typ.args[2]
+    if isexpr(T, :(<:))
+        T = T.args[1]
+    end
+
+    ret = Expr(:toplevel, :(Base.@__doc__ $(typ)))
+
+    @assert isexpr(T, :curly)
+    T, N = T.args
+    push!(ret.args, :(generate_read_n($T, N)))
+
+    return esc(ret)
+end
+
+function generate_read_n(T::UnionAll)
+    fc = fieldcount(T)
+    types = [fieldtype(T, i) for i = 1:fc]
+
+    # Create unpack function expression
+    function_expression = :(function Base.read(io::IO, t::Type{$(nameof(T)){N}}) where N end)
+
+    # Create Type call expression and add parameters
+    type_expression = :(($T)())
+    for t in types
+        read_expression = if t <: NTuple
+            el = nameof(eltype(t))
+            :(ntuple(i -> read(io, $el), N))
+        else
+            :(read(io, $t))
+        end
+        #append!(type_expression.args, 0)  # dummy with known length
+        #type_expression.args[end] = read_expression
+        push!(type_expression.args, read_expression)
+    end
+
+    # Replace empty function body with Type call
+    function_expression.args[2] = type_expression
+
+    eval(function_expression)
+end

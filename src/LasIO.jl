@@ -56,7 +56,6 @@ include("meta.jl")
 include("point.jl")
 include("util.jl")
 include("fileio.jl")
-include("srs.jl")
 
 function __init__()
     # these should eventually go in

@@ -1,18 +1,10 @@
 using Mmap
 
-function pointformat(header::LasHeader)
-    id = header.data_format_id
-    if id == 0x00
-        return LasPoint0
-    elseif id == 0x01
-        return LasPoint1
-    elseif id == 0x02
-        return LasPoint2
-    elseif id == 0x03
-        return LasPoint3
-    else
-        error("unsupported point format $(Int(id))")
+function Base.read!(io::IO, points::Vector{T}) where {T <: LasPoint}
+    for i=1:length(points)
+        points[i] = read(io, T)
     end
+    points
 end
 
 # skip the LAS file's magic four bytes, "LASF"

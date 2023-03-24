@@ -1,36 +1,76 @@
+abstract type LasRecordData end
+
 """
 A LAS "variable length record" - the generic way to store extra user or
 organization defined binary metadata in LAS files.
 """
-struct LasVariableLengthRecord
-    reserved::UInt16
+struct LasVariableLengthRecord{T<:LasRecordData}
+    description::AbstractString
+    data::T
+end
+
+# size of a VLR in bytes
+# assumes it is not extended VLR
+lassize(vlr::LasVariableLengthRecord) = 54 + length(vlr.data.raw_data)
+
+struct LasfProjectionData{ID} <: LasRecordData
+    raw_data::Vector{UInt8}
+end
+
+struct LasfSpecData{ID} <: LasRecordData
+    raw_data::Vector{UInt8}
+end
+
+struct GenericRecordData <: LasRecordData
     user_id::AbstractString
     record_id::UInt16
-    description::AbstractString
-    data  # anything with read+write+sizeof methods, like GeoKeys or Vector{UInt8}
+    raw_data::Vector{UInt8}
 end
+
+Base.summary(vlr::LasVariableLengthRecord) = "VLR of size $(lassize(vlr))"
+Base.summary(vlr::LasVariableLengthRecord{T}) where {ID, T <: LasfProjectionData{ID}} =
+    "LASF_Projection($ID) of size $(lassize(vlr))"
+Base.summary(vlr::LasVariableLengthRecord{T}) where {ID, T <: LasfSpecData{ID}} =
+    "LASF_Spec($ID) of size $(lassize(vlr))"
+Base.summary(vlr::LasVariableLengthRecord{GenericRecordData}) =
+    "$(vlr.data.user_id)($(vlr.data.record_id)) of size $(lassize(vlr))"
 
 # Read a variable length metadata record from a stream.
 #
 # If `extended` is true, the VLR is one of the extended VLR types specified in
 # the LAS 1.4 spec which can be larger and come after the point data.
-function Base.read(io::IO, ::Type{LasVariableLengthRecord}, extended::Bool=false)
-    # `reserved` is meant to be 0 according to the LAS spec 1.4, but earlier
-    # versions set it to 0xAABB.  Whatever, I guess we just store&ignore for now.
-    # See https://groups.google.com/forum/#!topic/lasroom/SVtNBA2y9iI
+function Base.read(io::IO, ::Type{LasVariableLengthRecord};
+        extended::Bool=false, version=v"1.4")
+
+    # read fields according to table 6 of specification 1.4r15
     reserved = read(io, UInt16)
     user_id = readstring(io, 16)
     record_id = read(io, UInt16)
     record_data_length::Int = extended ? read(io, UInt64) : read(io, UInt16)
     description = readstring(io, 32)
-    data = read_vlr_data(io, record_id, record_data_length)
-    LasVariableLengthRecord(
-        reserved,
-        user_id,
-        record_id,
-        description,
-        data
-    )
+
+    # check value of reserved field
+    if version >= v"1.4"
+        iszero(reserved) || @warn "Reserved field in VLR header is non-zero"
+    elseif version == v"1.0"
+        reserved == 0xAABB || @warn "Reserved field in VLR header is not 0xAABB"
+    else
+        # standards 1.1–1.3 do not specify the reserved field, but having a
+        # value other than those two is unexpected enough to warrant a warning
+        iszero(reserved) || reserved == 0xAABB ||
+            @warn "Reserved field in VLR header has non-standard value $reserved"
+    end
+
+    raw_data = read(io, record_data_length)
+    data = if user_id == "LASF_Projection"
+        LasfProjectionData{record_id}(raw_data)
+    elseif user_id == "LASF_Spec"
+        LasfSpecData{record_id}(raw_data)
+    else
+        GenericRecordData(user_id, record_id, raw_data)
+    end
+
+    LasVariableLengthRecord(description, data)
 end
 
 function Base.write(io::IO, vlr::LasVariableLengthRecord, extended::Bool=false)
@@ -43,7 +83,3 @@ function Base.write(io::IO, vlr::LasVariableLengthRecord, extended::Bool=false)
     write(io, vlr.data)
     nothing
 end
-
-# size of a VLR in bytes
-# assumes it is not extended VLR
-Base.sizeof(vlr::LasVariableLengthRecord) = 54 + sizeof(vlr.data)

@@ -1,5 +1,4 @@
-
-"Abstract type for ASPRS LAS point data record formats 0 - 3"
+"Abstract type for ASPRS LAS point data record formats 0–3 & 6–8"
 abstract type LasPoint end
 
 """
@@ -43,7 +42,7 @@ function Base.show(io::IO, pointdata::AbstractVector{<:LasPoint})
 end
 
 "ASPRS LAS point data record format 0"
-@gen_io struct LasPoint0 <: LasPoint
+struct LasPoint0{N} <: LasPoint
     x::Int32
     y::Int32
     z::Int32
@@ -53,10 +52,14 @@ end
     scan_angle::Int8
     user_data::UInt8
     pt_src_id::UInt16
+    extra_bytes::NTuple{N,UInt8}
 end
+lassize(::Type{LasPoint0{0}}) = 20
+lassize(::Type{LasPoint0{N}}) where N = lassize(LasPoint0{0}) + N
+generate_read_n(LasPoint0{N} where N)
 
 "ASPRS LAS point data record format 1"
-@gen_io struct LasPoint1 <: LasPoint
+struct LasPoint1{N} <: LasPoint
     x::Int32
     y::Int32
     z::Int32
@@ -67,10 +70,14 @@ end
     user_data::UInt8
     pt_src_id::UInt16
     gps_time::Float64
+    extra_bytes::NTuple{N,UInt8}
 end
+lassize(::Type{LasPoint1{0}}) = 28
+lassize(::Type{LasPoint1{N}}) where N = lassize(LasPoint1{0}) + N
+generate_read_n(LasPoint1{N} where N)
 
 "ASPRS LAS point data record format 2"
-@gen_io struct LasPoint2 <: LasPoint
+struct LasPoint2{N} <: LasPoint
     x::Int32
     y::Int32
     z::Int32
@@ -83,10 +90,14 @@ end
     red::N0f16
     green::N0f16
     blue::N0f16
+    extra_bytes::NTuple{N,UInt8}
 end
+lassize(::Type{LasPoint2{0}}) = 26
+lassize(::Type{LasPoint2{N}}) where N = lassize(LasPoint2{0}) + N
+generate_read_n(LasPoint2{N} where N)
 
 "ASPRS LAS point data record format 3"
-@gen_io struct LasPoint3 <: LasPoint
+struct LasPoint3{N} <: LasPoint
     x::Int32
     y::Int32
     z::Int32
@@ -100,11 +111,103 @@ end
     red::N0f16
     green::N0f16
     blue::N0f16
+    extra_bytes::NTuple{N,UInt8}
+end
+lassize(::Type{LasPoint3{0}}) = 34
+lassize(::Type{LasPoint3{N}}) where N = lassize(LasPoint3{0}) + N
+generate_read_n(LasPoint3{N} where N)
+
+"ASPRS LAS point data record format 6"
+struct LasPoint6{N} <: LasPoint
+    x::Int32
+    y::Int32
+    z::Int32
+    intensity::UInt16
+    flags::UInt16
+    raw_classification::UInt8
+    user_data::UInt8
+    scan_angle::Int16
+    pt_src_id::UInt16
+    gps_time::Float64
+    extra_bytes::NTuple{N,UInt8}
+end
+lassize(::Type{LasPoint6{0}}) = 30
+lassize(::Type{LasPoint6{N}}) where N = lassize(LasPoint6{0}) + N
+generate_read_n(LasPoint6{N} where N)
+
+"ASPRS LAS point data record format 7"
+struct LasPoint7{N} <: LasPoint
+    x::Int32
+    y::Int32
+    z::Int32
+    intensity::UInt16
+    flags::UInt16
+    raw_classification::UInt8
+    user_data::UInt8
+    scan_angle::Int16
+    pt_src_id::UInt16
+    gps_time::Float64
+    red::N0f16
+    green::N0f16
+    blue::N0f16
+    extra_bytes::NTuple{N,UInt8}
+end
+lassize(::Type{LasPoint7{0}}) = 36
+lassize(::Type{LasPoint7{N}}) where N = lassize(LasPoint7{0}) + N
+generate_read_n(LasPoint7{N} where N)
+
+"ASPRS LAS point data record format 8"
+struct LasPoint8{N} <: LasPoint
+    x::Int32
+    y::Int32
+    z::Int32
+    intensity::UInt16
+    flags::UInt16
+    raw_classification::UInt8
+    user_data::UInt8
+    scan_angle::Int16
+    pt_src_id::UInt16
+    gps_time::Float64
+    red::N0f16
+    green::N0f16
+    blue::N0f16
+    nir::N0f16
+    extra_bytes::NTuple{N,UInt8}
+end
+lassize(::Type{LasPoint8{0}}) = 38
+lassize(::Type{LasPoint8{N}}) where N = lassize(LasPoint8{0}) + N
+generate_read_n(LasPoint8{N} where N)
+
+function pointformat(format_id)
+    if format_id == 0x00
+        LasPoint0
+    elseif format_id == 0x01
+        LasPoint1
+    elseif format_id == 0x02
+        LasPoint2
+    elseif format_id == 0x03
+        LasPoint3
+    elseif format_id == 0x06
+        LasPoint6
+    elseif format_id == 0x07
+        LasPoint7
+    elseif format_id == 0x08
+        LasPoint8
+    else
+        error("unsupported point format $(Int(id))")
+    end
+end
+
+function pointformat(format_id, record_length)
+    P = pointformat(format_id)
+    N = record_length - lassize(P{0}) # extra bytes
+    N >= 0 || error("Record length too short for point data record format")
+    P{N}
 end
 
 # for convenience in function signatures
-const LasPointColor = Union{LasPoint2,LasPoint3}
-const LasPointTime = Union{LasPoint1,LasPoint3}
+const LasPointColor = Union{LasPoint2,LasPoint3,LasPoint7,LasPoint8}
+const LasPointTime = Union{LasPoint1,LasPoint3,LasPoint6,LasPoint7,LasPoint8}
 
 function Base.show(io::IO, p::LasPoint)
     x = Int(p.x)
